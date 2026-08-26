@@ -543,8 +543,16 @@ function updateRuleUI(){
 $('rule').onchange = updateRuleUI;
 $('invType').onchange = ()=>{
   const v=$('invType').value;
-  if(v==='一括のみ'){$('monAmt').value='0';}
-  else if(v==='積立のみ'){$('initAmt').value='0'; if($('monAmt').value==='0')$('monAmt').value='1000';}
+  if(v==='一括のみ'){
+    $('monAmt').value='0';
+    if(+$('initAmt').value<=0) $('initAmt').value='10000';
+  } else if(v==='積立のみ'){
+    $('initAmt').value='0';
+    if(+$('monAmt').value<=0) $('monAmt').value='1000';
+  } else { // ハイブリッド
+    if(+$('initAmt').value<=0) $('initAmt').value='10000';
+    if(+$('monAmt').value<=0) $('monAmt').value='1000';
+  }
 };
 updateRuleUI();
 
@@ -592,6 +600,7 @@ function setupTapOutsideToHide(canvasEl){
 $('runBtn').onclick = ()=>{
   const p = gather();
   if(p.rule.includes('金利') && p.rule!=='ホールド' && p.dffLow>=p.dffHigh){alert('金利ルール: 下限は上限より小さくしてください');return;}
+  if(p.initialAmt<=0 && p.monthlyAmt<=0){alert('初期投資額または月額積立額を入力してください');return;}
   clearCharts();
   if(mode==='N年運用') runNYear(p);
   else runPeriod(p);
@@ -711,8 +720,6 @@ function runNYear(p){
       ${rowN('最も浅い',ddShV.map(pct),ddShV)}
       ${rowN('最も深い',ddDpV.map(pct),ddDpV)}
     </tbody></table>
-    <div class="note">ホールドに対する戦略の勝率：
-      ${COLS.map(c=>`${c.nm} <span class="badge">${winHold[c.k]}/${n}（${(winHold[c.k]/n*100).toFixed(0)}%）</span>${tieHold[c.k]>0?`<span class="badge">引分${tieHold[c.k]}</span>`:''}`).join('　／　')}</div>
   </div>
   <div class="card">
     <h3>年率リターンの範囲</h3><div class="csub">各資産の最良・中央値・最悪</div>
