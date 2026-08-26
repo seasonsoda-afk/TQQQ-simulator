@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>QLD戦略シミュレーター</title>
+<title>QLD・TQQQ戦略シミュレーター</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <style>
   :root{
@@ -95,6 +95,9 @@
   .chartbox.tall{height:440px}
   .two{display:grid; grid-template-columns:1fr 1fr; gap:20px}
   @media(max-width:760px){.two{grid-template-columns:1fr}}
+  .three{display:grid; grid-template-columns:repeat(3,1fr); gap:20px}
+  @media(max-width:1100px){.three{grid-template-columns:1fr 1fr}}
+  @media(max-width:760px){.three{grid-template-columns:1fr}}
 
   .note{font-size:12px; color:var(--muted); margin-top:10px; line-height:1.5}
   .tabs{display:flex; gap:4px; margin-bottom:18px; border-bottom:2px solid var(--line)}
@@ -111,8 +114,7 @@
 <body>
 <header>
   <div class="wrap">
-    <h1>QLD戦略シミュレーター</h1>
-    <span class="sub">2倍レバレッジ NASDAQ100 を1985年から検証</span>
+    <h1>QLD・TQQQ戦略シミュレーター</h1>
     <span class="tag">擬似データ／1985–2026</span>
   </div>
 </header>
@@ -150,7 +152,7 @@
       <div class="fld">
         <label>運用年数</label>
         <input type="number" id="nyears" value="20" min="1" max="71">
-        <div class="hint">開始時期を四半期ごとにずらし、全パターンを検証します</div>
+        <div class="hint">開始時期を1か月ごとにずらし、全パターンを検証します</div>
       </div>
     </div>
 
@@ -188,16 +190,16 @@
     <div class="fld" id="rateFld">
       <label>金利ルール（FFレート%）</label>
       <div class="row2">
-        <div><div class="lbl">下限（未満で保有）</div><input type="number" id="dffLow" value="0.75" step="0.1"></div>
-        <div><div class="lbl">上限（以上で退避）</div><input type="number" id="dffHigh" value="4" step="0.1"></div>
+        <div><div class="lbl">下限（未満で保有）</div><input type="number" id="dffLow" value="0.3" step="0.1"></div>
+        <div><div class="lbl">上限（以上で退避）</div><input type="number" id="dffHigh" value="2.5" step="0.1"></div>
       </div>
     </div>
 
     <div class="fld" id="dmaFld">
       <label>200DMAルール（%）</label>
       <div class="row2">
-        <div><div class="lbl">買いバンド（上抜け）</div><input type="number" id="bandBuy" value="3" step="0.5"></div>
-        <div><div class="lbl">売りバンド（下抜け）</div><input type="number" id="bandSell" value="5" step="0.5"></div>
+        <div><div class="lbl">買いバンド（上抜け）</div><input type="number" id="bandBuy" value="5" step="0.5"></div>
+        <div><div class="lbl">売りバンド（下抜け）</div><input type="number" id="bandSell" value="12" step="0.5"></div>
       </div>
     </div>
 
@@ -206,7 +208,7 @@
       <select id="retreat">
         <option value="cash">現金（金利0%）</option>
         <option value="mmf" selected>MMF（短期金利）</option>
-        <option value="spy">NASDAQ100（レバなし）</option>
+        <option value="spy">QQQ</option>
       </select>
     </div>
 
@@ -237,7 +239,7 @@
   <section class="results" id="results">
     <div class="empty">
       <div class="big">パラメータを設定して「計算する」</div>
-      <div>QLD（2倍）の戦略運用を、ガチホQLD・NASDAQ100と比較します</div>
+      <div>QLD の戦略運用を、ガチホQLD・QQQと比較します</div>
     </div>
   </section>
 
@@ -247,7 +249,7 @@
 <footer>
   <div class="wrap">
     <p>本ツールは過去データに基づくシミュレーションであり、将来の成果を保証するものではありません。<br>
-    1985年からのデータはNASDAQ100の値動きをもとに合成・推計した擬似データを含みます。投資判断はご自身の責任で。</p>
+    1985年からのデータはQQQの値動きをもとに合成・推計した擬似データを含みます。投資判断はご自身の責任で。</p>
   </div>
 </footer>
 
@@ -260,7 +262,7 @@ const SimEngine = (function() {
   let D = null;        // 生データ
   let N = 0;
   let dateObjs = [];   // Dateオブジェクト配列
-  let sptr = [];       // NASDAQ100トータルリターン日次
+  let sptr = [];       // QQQトータルリターン日次
   let ma200 = [];      // 200日移動平均（GSPC）
   let dffMonthly = []; // 月平均DFF
   let isMonthStart = [];
@@ -386,8 +388,16 @@ const SimEngine = (function() {
     const assetPath = new Array(n);
     for (let j = 0; j < n; j++) {
       const idx = startI + j;
-      let todayState = (idx === 0) ? false : sig[idx-1];
-      if (j === 0) runState = false;
+      let todayState = (idx === 0) ? sig[0] : sig[idx-1];
+      if (j === 0) {
+        // 初日は売却せず、シグナルに従って株式またはMMFを購入する
+        runState = todayState;
+        if (runState) {
+          let bf = balance * p.feeRate; if (bf > p.feeCap) bf = p.feeCap;
+          balance -= bf; totalFee += bf; nTrades++;
+        }
+        basis = balance;
+      }
       if (j > 0 && todayState !== runState) {
         // 売却
         let sellValue = balance, gain = sellValue - basis;
@@ -412,6 +422,11 @@ const SimEngine = (function() {
       if (assetPath[j] > peak) peak = assetPath[j];
       if (peak > 0) { const dd = assetPath[j]/peak - 1; if (dd < maxDD) maxDD = dd; }
     }
+    // 期末に全売却したとみなして譲渡益課税（ホールド側と条件を揃える）
+    {
+      const gainEnd = balance - basis;
+      if (gainEnd > 0) { balance -= gainEnd * p.taxRate; totalTax += gainEnd * p.taxRate; }
+    }
     const nYears = (dateObjs[endI] - dateObjs[startI])/(1000*60*60*24)/365.25;
     let cagr;
     if (p.monthlyAmt > 0) cagr = (totalInvested>0 && balance>0) ? Math.pow(balance/totalInvested, 1/nYears)-1 : 0;
@@ -423,17 +438,26 @@ const SimEngine = (function() {
   function simulateBenchmark(startI, endI, asset, p) {
     const n = endI - startI + 1;
     let balance = p.initialAmt, totalInvested = p.initialAmt, peak = 0, maxDD = 0;
+    let basisB = p.initialAmt;
     const assetPath = new Array(n);
     for (let j = 0; j < n; j++) {
       const idx = startI + j;
+      // 初日に買付（戦略側と条件を揃える）
+      if (j === 0) {
+        let bf = balance * p.feeRate; if (bf > p.feeCap) bf = p.feeCap;
+        balance -= bf; basisB = balance;
+      }
       if (p.monthlyAmt > 0 && isMonthStart[idx] && j > 0) {
-        balance += p.monthlyAmt; totalInvested += p.monthlyAmt;
+        balance += p.monthlyAmt; basisB += p.monthlyAmt; totalInvested += p.monthlyAmt;
       }
       balance *= (1 + assetRet(asset, idx));
       assetPath[j] = balance;
       if (balance > peak) peak = balance;
       if (peak > 0) { const dd = balance/peak - 1; if (dd < maxDD) maxDD = dd; }
     }
+    // 売却時の譲渡益課税（戦略側と条件を揃える）
+    const gainB = balance - basisB;
+    if (gainB > 0) balance -= gainB * p.taxRate;
     const nYears = (dateObjs[endI] - dateObjs[startI])/(1000*60*60*24)/365.25;
     let cagr;
     if (p.monthlyAmt > 0) cagr = (totalInvested>0 && balance>0) ? Math.pow(balance/totalInvested,1/nYears)-1 : 0;
@@ -444,7 +468,7 @@ const SimEngine = (function() {
   // N年運用（VBA RunNYearMode移植）
   function runNYear(nYears, p, asset) {
     const daysNeeded = nYears * 252;
-    const stepDays = 63;
+    const stepDays = 21;
     const sig = getSignal(p);
     const patterns = [];
     let sIdx = 0;
@@ -575,9 +599,9 @@ $('runBtn').onclick = ()=>{
 
 // 3列定義（同じ戦略を各資産に適用）
 const COLS = [
-  {k:'sptr', nm:'NASDAQ100（1倍）', cls:'sp500', color:'#4472C4'},
-  {k:'sso',  nm:'QLD（2倍）',    cls:'sso',   color:'#E8821E'},
-  {k:'spxl', nm:'TQQQ（3倍）',   cls:'spxl',  color:'#C0392B'}
+  {k:'sptr', nm:'QQQ',  cls:'sp500', color:'#4472C4'},
+  {k:'sso',  nm:'QLD',  cls:'sso',   color:'#E8821E'},
+  {k:'spxl', nm:'TQQQ', cls:'spxl',  color:'#C0392B'}
 ];
 function ruleLabel(p){ return p.rule==='ホールド' ? 'ホールド（売買なし）' : p.rule+'戦略'; }
 
@@ -633,12 +657,13 @@ function runPeriod(p){
 function runNYear(p){
   const ny=+$('nyears').value;
   const sig=SimEngine.getSignal(p);
-  const daysNeeded=ny*252, stepDays=63;
+  const daysNeeded=ny*252, stepDays=21;
   const rows=[]; let sIdx=0;
   while(sIdx+daysNeeded-1<=SimEngine.N-1){
     const startI=sIdx, endI=sIdx+daysNeeded-1;
     const r={};
-    COLS.forEach(c=>{ const x=SimEngine.simulateStrategy(startI,endI,sig,p,c.k); r[c.k]=x.cagr; r[c.k+'_dd']=x.maxDD; });
+    COLS.forEach(c=>{ const x=SimEngine.simulateStrategy(startI,endI,sig,p,c.k); r[c.k]=x.cagr; r[c.k+'_dd']=x.maxDD;
+      const b=SimEngine.simulateBenchmark(startI,endI,c.k,p); r[c.k+'_hold']=b.cagr; });
     r.nTrades=SimEngine.simulateStrategy(startI,endI,sig,p,'sso').nTrades;
     rows.push(r);
     sIdx+=stepDays;
@@ -650,8 +675,13 @@ function runNYear(p){
   COLS.forEach(c=>{ cData[c.k]=rows.map(r=>r[c.k]*100); ddData[c.k]=rows.map(r=>r[c.k+'_dd']*100); });
 
   // SSO基準の勝率
-  const winVsSpxl=rows.filter(r=>r.sso>r.spxl).length;
-  const winVsSpy=rows.filter(r=>r.sso>r.sptr).length;
+  const winHold={}, tieHold={};
+  COLS.forEach(c=>{
+    // 年率0.05%未満の差は「引き分け」とみなし勝率に数えない
+    const EPS=0.0005;
+    winHold[c.k]=rows.filter(r=>r[c.k]-r[c.k+'_hold']>EPS).length;
+    tieHold[c.k]=rows.filter(r=>Math.abs(r[c.k]-r[c.k+'_hold'])<=EPS).length;
+  });
 
   const medV=COLS.map(c=>med(cData[c.k])/100);
   const mxV=COLS.map(c=>mx(cData[c.k])/100);
@@ -667,7 +697,7 @@ function runNYear(p){
   </div>
   <div class="card">
     <h3>${ny}年運用・${n}パターンの結果</h3>
-    <div class="csub">${ruleLabel(p)}を3資産に適用／開始時期を四半期ごとにずらして検証${p.rule!=='ホールド'?'　・　売買回数 中央値'+medTrades+'回':''}</div>
+    <div class="csub">${ruleLabel(p)}を3資産に適用／開始時期を1か月ごとにずらして検証${p.rule!=='ホールド'?'　・　売買回数 中央値'+medTrades+'回':''}</div>
     <table><thead><tr><th>年率リターン</th>${COLS.map(c=>`<th>${c.nm}</th>`).join('')}</tr></thead>
     <tbody>
       ${rowN('中央値',medV.map(pct),medV)}
@@ -681,27 +711,25 @@ function runNYear(p){
       ${rowN('最も浅い',ddShV.map(pct),ddShV)}
       ${rowN('最も深い',ddDpV.map(pct),ddDpV)}
     </tbody></table>
-    <div class="note">QLD（2倍）の勝率：
-      vs TQQQ <span class="badge">${winVsSpxl}/${n}（${(winVsSpxl/n*100).toFixed(0)}%）</span>
-      ／ vs NASDAQ100 <span class="badge">${winVsSpy}/${n}（${(winVsSpy/n*100).toFixed(0)}%）</span></div>
+    <div class="note">ホールドに対する戦略の勝率：
+      ${COLS.map(c=>`${c.nm} <span class="badge">${winHold[c.k]}/${n}（${(winHold[c.k]/n*100).toFixed(0)}%）</span>${tieHold[c.k]>0?`<span class="badge">引分${tieHold[c.k]}</span>`:''}`).join('　／　')}</div>
   </div>
   <div class="card">
     <h3>年率リターンの範囲</h3><div class="csub">各資産の最良・中央値・最悪</div>
     <div class="chartbox tall"><canvas id="cRange"></canvas></div>
   </div>
-  <div class="two">
-    <div class="card"><h3>QLD vs TQQQ</h3><div class="csub">45度線より上＝QLDの勝ち</div>
-      <div class="chartbox"><canvas id="cScatA"></canvas></div></div>
-    <div class="card"><h3>QLD vs NASDAQ100</h3><div class="csub">45度線より上＝QLDの勝ち</div>
-      <div class="chartbox"><canvas id="cScatB"></canvas></div></div>
+  <div class="three">
+    ${COLS.map((c,i)=>`<div class="card"><h3>${c.nm}　ホールド vs 戦略</h3>
+      <div class="csub">45度線より上＝戦略の勝ち　<span class="badge">${winHold[c.k]}/${n}（${(winHold[c.k]/n*100).toFixed(0)}%）</span>${tieHold[c.k]>0?`　引き分け ${tieHold[c.k]}`:''}</div>
+      <div class="chartbox"><canvas id="cScat${i}"></canvas></div></div>`).join('')}
   </div>`;
   $('results').innerHTML=html;
 
   rangeChart('cRange', COLS.map((c,i)=>({n:c.nm,c:c.color,mx:mxV[i],md:medV[i],mn:mnV[i]})));
-  scatterChart('cScatA', rows.map(r=>({x:r.spxl*100,y:r.sso*100})),
-    'TQQQ の年率(%)','QLD の年率(%)','#C0392B');
-  scatterChart('cScatB', rows.map(r=>({x:r.sptr*100,y:r.sso*100})),
-    'NASDAQ100 の年率(%)','QLD の年率(%)','#4472C4');
+  COLS.forEach((c,i)=>{
+    scatterChart('cScat'+i, rows.map(r=>({x:r[c.k+'_hold']*100,y:r[c.k]*100})),
+      c.nm+' ホールドの年率(%)', c.nm+' 戦略の年率(%)', c.color);
+  });
 }
 
 function statCard(cls,nm,big){
