@@ -142,10 +142,10 @@
         <div class="row2">
           <div><div class="lbl">開始（年/月）</div>
             <div class="row2"><input type="number" id="startY" value="1985" min="1985" max="2026">
-            <input type="number" id="startM" value="7" min="1" max="12"></div></div>
+            <input type="number" id="startM" value="10" min="1" max="12"></div></div>
           <div><div class="lbl">終了（年/月）</div>
             <div class="row2"><input type="number" id="endY" value="2026" min="1985" max="2026">
-            <input type="number" id="endM" value="4" min="1" max="12"></div></div>
+            <input type="number" id="endM" value="11" min="1" max="12"></div></div>
         </div>
       </div>
     </div>
@@ -153,7 +153,7 @@
     <div id="nyearFields" class="hidden">
       <div class="fld">
         <label>運用年数</label>
-        <input type="number" id="nyears" value="20" min="1" max="71">
+        <input type="number" id="nyears" value="20" min="1" max="41">
         <div class="hint">開始時期を1か月ごとにずらし、全パターンを検証します</div>
       </div>
     </div>
@@ -779,5 +779,58 @@ function scatterChart(id,pts,xl,yl,color){
 
 
 </script>
+
+<script id="seasonsoda-calendar-sync">
+(function() {
+  'use strict';
+  const firstDate = '1985-10-02';
+  const lastDate = '2026-11-13';
+  const firstYear = Number(firstDate.slice(0,4));
+  const firstMonth = Number(firstDate.slice(5,7));
+  const lastYear = Number(lastDate.slice(0,4));
+  const lastMonth = Number(lastDate.slice(5,7));
+  const ids = ['startY','startM','endY','endM','nyears'];
+  const elt = Object.fromEntries(ids.map(id => [id, document.getElementById(id)]));
+  if (ids.some(id => !elt[id])) throw new Error('Simulator date input missing');
+
+  function syncMonthConstraints() {
+    const sy = Number(elt.startY.value), ey = Number(elt.endY.value);
+    elt.startM.min = String(sy === firstYear ? firstMonth : 1);
+    elt.startM.max = String(sy === lastYear ? lastMonth : 12);
+    elt.endM.min = String(ey === firstYear ? firstMonth : 1);
+    elt.endM.max = String(ey === lastYear ? lastMonth : 12);
+    // Do not silently change an invalid user-entered month; the validator
+    // below produces an actionable message when starting a backtest.
+  }
+  function validRange() {
+    const sy=Number(elt.startY.value), sm=Number(elt.startM.value);
+    const ey=Number(elt.endY.value), em=Number(elt.endM.value);
+    return Number.isInteger(sy) && Number.isInteger(sm)
+      && Number.isInteger(ey) && Number.isInteger(em)
+      && sm>=1 && sm<=12 && em>=1 && em<=12
+      && sy*100+sm >= firstYear*100+firstMonth
+      && ey*100+em <= lastYear*100+lastMonth
+      && sy*100+sm <= ey*100+em;
+  }
+  for (const key of ['startY','endY']) {
+    elt[key].addEventListener('change', syncMonthConstraints);
+    elt[key].addEventListener('input', syncMonthConstraints);
+  }
+  syncMonthConstraints();
+
+  const run = document.getElementById('runBtn');
+  if (!run) throw new Error('Simulator run button missing');
+  run.addEventListener('click', function(event) {
+    if (typeof mode !== 'undefined' && mode === '期間指定' && !validRange()) {
+      event.stopImmediatePropagation();
+      event.preventDefault();
+      alert('指定期間が収録データの範囲外です。利用可能期間：'
+        +firstDate.slice(0,7)+' ～ '+lastDate.slice(0,7)
+        +'。開始月・終了月を確認してください。');
+    }
+  }, true);
+})();
+</script>
+
 </body>
 </html>
